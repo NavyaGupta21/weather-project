@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Weather App</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg-color: linear-gradient(120deg, #89f7fe, #66a6ff);
+      --text-color: #333;
+      --box-bg: #f0f0f0;
+    }
+
+    body.dark {
+      --bg-color: #1c1c1c;
+      --text-color: #f9f9f9;
+      --box-bg: #333;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    .weather-box {
+      background-color: var(--box-bg);
+      padding: 15px 20px;
+      border-radius: 10px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+      width: 425px;
+      text-align: center;
+    }
+    
+    input[type="date"],
+    input[type="text"],
+    select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    select,
+    input,
+    button {
+      width: 100%;
+      padding: 8px;
+      font-size: 16px;
+      margin-top: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      background-color: #007bff;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .result,
+    .forecast {
+      margin-top: 10px;
+      font-size: 18px;
+    }
+
+    .result .temp {
+      font-size: 26px;
+      font-weight: bold;
+      color: #e67e22;
+    }
+
+    .forecast-day {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 6px;
+    }
+
+    #credit {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    canvas {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="theme-toggle" onclick="toggleTheme()">🌙</div>
+
+  <div class="weather-box">
+    <h2>WEATHER</h2>
+
+    <input type="date" id="forecastDate" />
+
+    <select id="city" onchange="getWeather()">
+      <option value="">Select City</option>
+      <optgroup label="Asia">
+        <option value="Delhi">Delhi</option>
+        <option value="Mumbai">Mumbai</option>
+        <option value="Tokyo">Tokyo</option>
+        <option value="Beijing">Beijing</option>
+        <option value="Singapore">Singapore</option>
+      </optgroup>
+      <optgroup label="Europe">
+        <option value="London">London</option>
+        <option value="Paris">Paris</option>
+        <option value="Berlin">Berlin</option>
+        <option value="Madrid">Madrid</option>
+      </optgroup>
+      <optgroup label="North America">
+        <option value="New York">New York</option>
+        <option value="Los Angeles">Los Angeles</option>
+        <option value="Toronto">Toronto</option>
+      </optgroup>
+      <optgroup label="Africa">
+        <option value="Cairo">Cairo</option>
+        <option value="Nairobi">Nairobi</option>
+      </optgroup>
+      <optgroup label="Oceania">
+        <option value="Sydney">Sydney</option>
+        <option value="Auckland">Auckland</option>
+      </optgroup>
+    </select>
+
+    <input type="text" id="cityInput" placeholder="Or enter city name" />
+
+    <button onclick="getWeather()">Show Weather</button>
+    <button onclick="getMyLocation()">Use My Location</button>
+    <button onclick="toggleTemp()">Toggle °C / °F</button>
+
+    <div id="weatherInfo" class="result"></div>
+    <div id="forecast" class="forecast"></div>
+
+    <canvas id="forecastChart" width="400" height="200"></canvas>
+  </div>
+
+  <script>
+    let isCelsius = true;
+    let timeInterval;
+
+    window.onload = () => {
+      const forecastDate = document.getElementById("forecastDate");
+      const today = new Date();
+      const maxDate = new Date();
+      maxDate.setDate(today.getDate() + 5);
+
+      forecastDate.min = today.toISOString().split("T")[0];
+      forecastDate.max = maxDate.toISOString().split("T")[0];
+    };
+
+    function toggleTemp() {
+      isCelsius = !isCelsius;
+      getWeather();
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle("dark");
+      const icon = document.querySelector(".theme-toggle");
+      icon.textContent = document.body.classList.contains("dark") ? "☀️" : "🌙";
+    }
+
+    async function getWeather() {
+      const dropdownCity = document.getElementById("city").value;
+      const inputCity = document.getElementById("cityInput").value.trim();
+      const city = inputCity || dropdownCity;
+      if (!city) return;
+
+      document.getElementById("city").value = city;
+
+      const unit = isCelsius ? "metric" : "imperial";
+      const unitSymbol = isCelsius ? "°C" : "°F";
+      const apiKey = "4db6733fae44a6b6cbd3a1059226a902";
+
+      const url = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=${unit}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      const infoBox = document.getElementById("weatherInfo");
+      const forecastBox = document.getElementById("forecast");
+
+      if (data.cod !== 200) {
+        infoBox.innerHTML = `Error: ${data.message}`;
+        forecastBox.innerHTML = "";
+        return;
+      }
+
+      updateCityTime(data.timezone);
+
+      const flagUrl = `https://flagsapi.com/${data.sys.country}/shiny/64.png`;
+
+      infoBox.innerHTML = `
+        <p><strong>${data.name}, ${data.sys.country}</strong> <img src="${flagUrl}" height="20"></p>
+        <p>Local Time: <span id="localTimeDisplay"></span></p>
+        <img src="http://openweathermap.org/img/wn/${data.weather[0].icon}@2x.png">
+        <p class="temp">${data.main.temp}${unitSymbol}</p>
+        <p>Feels like: ${data.main.feels_like}${unitSymbol}</p>
+        <p>${data.weather[0].description}</p>
+        <p>Humidity: ${data.main.humidity}%</p>
+        <p>Wind: ${data.wind.speed} ${unit === "metric" ? "m/s" : "mph"}</p>
+      `;
+
+      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}&units=${unit}`;
+      const forecastRes = await fetch(forecastUrl);
+      const forecastData = await forecastRes.json();
+
+      const daily = {};
+      forecastData.list.forEach((item) => {
+        const date = item.dt_txt.split(" ")[0];
+        if (!daily[date]) daily[date] = [];
+        daily[date].push(item);
+      });
+
+      const selectedDate = document.getElementById("forecastDate").value;
+      const todayStr = new Date().toISOString().split("T")[0];
+      const forecastStartDate = selectedDate || todayStr;
+
+      const filteredDates = Object.keys(daily)
+        .filter((date) => date >= forecastStartDate)
+        .slice(0, 5);
+
+      forecastBox.innerHTML = `<h3>5-Day Forecast for ${city}</h3>`;
+
+      const labels = [];
+      const temps = [];
+
+      filteredDates.forEach((date) => {
+        const dayTemps = daily[date].map((i) => i.main.temp);
+        const avgTemp = (
+          dayTemps.reduce((a, b) => a + b, 0) / dayTemps.length
+        ).toFixed(1);
+        const icon = daily[date][0].weather[0].icon;
+        const main = daily[date][0].weather[0].main;
+
+        labels.push(date);
+        temps.push(avgTemp);
+
+        forecastBox.innerHTML += `
+          <div class="forecast-day">
+            <p><strong>${date}</strong></p>
+            <img src="http://openweathermap.org/img/wn/${icon}.png">
+            <p>${avgTemp}${unitSymbol}</p>
+            <p>${main}</p>
+          </div>
+        `;
+      });
+
+      const ctx = document.getElementById("forecastChart").getContext("2d");
+      if (window.myChart) window.myChart.destroy();
+      window.myChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: `Average Temp (${unitSymbol})`,
+              data: temps,
+              borderColor: "#007bff",
+              backgroundColor: "rgba(0, 123, 255, 0.2)",
+              fill: true,
+              tension: 0.4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              labels: {
+                color: getComputedStyle(document.body).getPropertyValue("--text-color"),
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: getComputedStyle(document.body).getPropertyValue("--text-color"),
+              },
+            },
+            y: {
+              ticks: {
+                color: getComputedStyle(document.body).getPropertyValue("--text-color"),
+              },
+            },
+          },
+        },
+      });
+    }
+
+    async function getMyLocation() {
+      if (!navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const unit = isCelsius ? "metric" : "imperial";
+        const apiKey = "4db6733fae44a6b6cbd3a1059226a902";
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${unit}`;
+
+        const res = await fetch(url);
+        const data = await res.json();
+        document.getElementById("cityInput").value = data.name;
+        getWeather();
+      });
+    }
+
+    function updateCityTime(timezoneOffset) {
+      if (timeInterval) clearInterval(timeInterval);
+
+      timeInterval = setInterval(() => {
+        const utc = new Date().getTime() + new Date().getTimezoneOffset() * 60000;
+        const localTime = new Date(utc + timezoneOffset * 1000);
+        const formatted = localTime.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        document.getElementById("localTimeDisplay").textContent = formatted;
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
